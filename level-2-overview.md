@@ -42,7 +42,7 @@ graph TB
     end
     
     subgraph "System 1: AI Manager"
-        UI[ToolJet<br/>━━━━━━━━━<br/>Web Application<br/>Node.js + React<br/>Port: 3000]
+        UI[Web Application<br/>━━━━━━━━━<br/>UI Platform<br/>TBD: Airtable or ToolJet<br/>Port: 3000]
         
         WORKFLOW[n8n<br/>━━━━━━━━━<br/>Workflow Engine<br/>Node.js<br/>Port: 5678]
         
@@ -50,7 +50,7 @@ graph TB
     end
     
     subgraph "System 2: AI Quality Platform"
-        LANGFUSE[Langfuse<br/>━━━━━━━━━<br/>Observability<br/>Next.js + PostgreSQL<br/>Port: 3001]
+        OBS[Observability Platform<br/>━━━━━━━━━<br/>TBD: LangSmith or Langfuse<br/>Port: 3001]
     end
     
     subgraph "System 3: Data Platform"
@@ -81,7 +81,7 @@ graph TB
     %% Container interactions
     UI -->|REST API| API
     UI -->|REST API| WORKFLOW
-    UI -->|iframe embed| LANGFUSE
+    UI -->|View/Embed| OBS
     
     WORKFLOW -->|Webhook| API
     WORKFLOW -->|SMTP| SES
@@ -89,9 +89,9 @@ graph TB
     API -->|SQL| NEON
     API -->|S3 API| S3
     API -->|Redis| REDIS
-    API -->|SDK| LANGFUSE
+    API -->|SDK| OBS
     
-    LANGFUSE -->|SQL| NEON
+    OBS -->|SQL| NEON
     
     %% External integrations
     API -->|REST| WS
@@ -108,7 +108,7 @@ graph TB
     style WORKFLOW fill:#66bb6a,stroke:#2e7d32,stroke-width:3px,color:#fff
     style API fill:#4db6ac,stroke:#00796b,stroke-width:3px,color:#fff
     
-    style LANGFUSE fill:#ffb74d,stroke:#ef6c00,stroke-width:3px,color:#fff
+    style OBS fill:#ffb74d,stroke:#ef6c00,stroke-width:3px,color:#fff
     
     style NEON fill:#9575cd,stroke:#4527a0,stroke-width:3px,color:#fff
     style S3 fill:#7e57c2,stroke:#311b92,stroke-width:3px,color:#fff
@@ -131,7 +131,48 @@ graph TB
 
 ## 📦 Container Specifications
 
-### **Container 1: ToolJet Web Application**
+### **Container 1: Web Application (UI Platform)**
+
+**Decision Pending:** Airtable (SaaS) vs ToolJet (Self-hosted)
+
+#### **Option A: Airtable (SaaS)**
+
+```yaml
+Service: Airtable
+Technology: SaaS Platform
+Purpose: All user interfaces (Executive + SuperBuilder)
+Deployment: Cloud (managed by Airtable)
+
+Features:
+  Executive UI:
+    - Configure rules, policies
+    - Approval dashboards
+    - Performance reports
+    - (Observability in separate tab)
+  
+  SuperBuilder UI:
+    - Submit manual time requests
+    - View/update projects
+    - "My SuperBase" interface (Itamar's POC)
+
+Database: Airtable Base
+  Contains:
+    - SuperBuilder profiles
+    - Projects & history
+    - Approval requests
+    - Configuration data
+
+Integration:
+  - REST API to AI Manager API
+  - Webhooks from Airtable Automations
+  - Cannot embed observability tools
+
+Cost: $45/user/month × 3 = $135/month
+Pros: Fast (POC exists), familiar to Itamar
+Cons: Can't embed observability, SaaS only, ongoing cost
+```
+
+#### **Option B: ToolJet (Self-hosted)**
 
 ```yaml
 Name: tooljet-app
@@ -143,7 +184,7 @@ Deployment: Docker container on ECS Fargate
 Features:
   Executive UI:
     - Configure prompts, rules, policies
-    - Review quality (embedded Langfuse)
+    - Review quality (embedded observability)
     - Approval dashboards
     - Performance reports
   
@@ -163,10 +204,16 @@ Environment Variables:
   - DATABASE_URL (internal)
   - API_ENDPOINT (AI Manager API)
   - N8N_WEBHOOK_URL
-  - LANGFUSE_URL (for iframe embed)
+  - OBSERVABILITY_URL (for iframe embed)
+
+Cost: $15/month (compute only)
+Pros: $0 licensing, embed observability, self-hosted
+Cons: Need to build what Airtable POC already has (2-3 weeks)
 
 Scaling: 1-2 instances (low traffic)
 ```
+
+**Recommendation:** See `research-and-analysis/AIRTABLE_VS_TOOLJET.md` for detailed comparison
 
 ---
 
@@ -248,15 +295,15 @@ External APIs:
   - WorkSmart, BrainLift, Metrics
 
 Observability:
-  - Langfuse SDK (trace logging)
+  - LangSmith SDK OR Langfuse SDK (trace logging)
 
 Environment Variables:
   - DATABASE_URL
   - OPENAI_API_KEY
   - ANTHROPIC_API_KEY
   - VOYAGE_API_KEY
-  - LANGFUSE_PUBLIC_KEY
-  - LANGFUSE_SECRET_KEY
+  - OBSERVABILITY_PUBLIC_KEY (LangSmith or Langfuse)
+  - OBSERVABILITY_SECRET_KEY (LangSmith or Langfuse)
   - WORKSMART_API_KEY
   - BRAINLIFT_API_KEY
   - S3_BUCKET_NAME
@@ -269,7 +316,38 @@ Scaling:
 
 ---
 
-### **Container 4: Langfuse Observability**
+### **Container 4: Observability Platform**
+
+**Decision Pending:** LangSmith vs Langfuse vs Both
+
+#### **Option A: LangSmith (SaaS)**
+
+```yaml
+Service: LangSmith
+Technology: SaaS Platform (LangChain)
+Purpose: AI trace logging, prompt management, quality metrics
+Deployment: Cloud (managed)
+
+Features:
+  - Native LangGraph integration
+  - LangGraph Studio (visual debugging)
+  - Trace visualization
+  - Prompt management
+  - Evaluation datasets
+  - Team collaboration
+
+Database: Managed by LangSmith
+
+Access:
+  - Web UI (separate tab or embedded?)
+  - SDK integration in Python
+
+Cost: $199/month (team plan, 5 users)
+Pros: Native LangGraph, Studio included, simple setup
+Cons: Ongoing cost, vendor lock-in, embedding unclear
+```
+
+#### **Option B: Langfuse (Self-hosted)**
 
 ```yaml
 Name: langfuse-observability
@@ -299,11 +377,35 @@ Environment Variables:
   - NEXTAUTH_SECRET
 
 Access:
-  - Embedded in ToolJet (iframe)
+  - Embedded in UI platform (iframe confirmed)
   - Direct URL for developers
+
+Cost: $15/month (compute only)
+Pros: $0 licensing, open source, embeddable, full control
+Cons: Less native LangGraph integration, no visual Studio
 
 Scaling: 1-2 instances
 ```
+
+#### **Option C: Both (Hybrid)**
+
+```yaml
+Development:
+  - LangSmith Cloud: $39/month (1 developer)
+  - LangGraph Studio included
+  - Patrick uses for debugging
+
+Production:
+  - Langfuse Self-hosted: $15/month (compute)
+  - Embedded in UI for executives
+  - Production traces
+
+Total Cost: $54/month
+Pros: Best of both worlds
+Cons: Slight complexity (two tools)
+```
+
+**Recommendation:** See `research-and-analysis/OBSERVABILITY_STACK.md` for detailed analysis
 
 ---
 
@@ -330,20 +432,20 @@ Databases:
       - policy_embeddings (1536 dimensions)
       - conversation_embeddings (512 dimensions)
       
-      # ToolJet Internal
-      - tooljet_* (UI configs)
+      # UI Platform Internal (if self-hosted)
+      - ui_platform_* (configs, if ToolJet)
       
       # n8n Internal
       - n8n_* (workflows)
       
-      # Langfuse Internal
-      - langfuse_* (traces, prompts)
+      # Observability Internal (if self-hosted)
+      - observability_* (traces, prompts, if Langfuse)
 
 Connections:
-  - ToolJet: Read/write UI data
+  - UI Platform: Read/write application data
   - n8n: Read/write workflows
   - AI Manager API: Read/write all data
-  - Langfuse: Read/write traces
+  - Observability: Read/write traces
 
 Backup: Automated daily snapshots
 Security: SSL, IP whitelist, IAM roles
@@ -371,8 +473,8 @@ Buckets:
 
 Access:
   - AI Manager API: Read policies for RAG
-  - ToolJet: Upload/download via API
-  - Langfuse: Store large traces
+  - UI Platform: Upload/download via API
+  - Observability: Store large traces
 
 Lifecycle:
   - Policies: No expiration
@@ -401,7 +503,7 @@ Data Types:
 
 Access:
   - AI Manager API: Primary user
-  - ToolJet: Session storage
+  - UI Platform: Session storage (if applicable)
 
 Scaling: Serverless (auto-scale)
 ```
@@ -418,7 +520,7 @@ sequenceDiagram
     participant API as AI Manager API
     participant DB as Neon DB
     participant LLM as OpenAI
-    participant LF as Langfuse
+    participant OBS as Observability
     participant SES as AWS SES
     
     CRON->>API: POST /evaluations/weekly
@@ -428,7 +530,7 @@ sequenceDiagram
     loop For each SuperBuilder
         API->>LLM: Evaluate project (TAM, goals, etc.)
         LLM-->>API: Grade + feedback
-        API->>LF: Log trace
+        API->>OBS: Log trace
         API->>DB: Store evaluation
     end
     
@@ -441,17 +543,17 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant SB as SuperBuilder
-    participant UI as ToolJet
+    participant UI as UI Platform
     participant API as AI Manager API
     participant LLM as OpenAI
-    participant LF as Langfuse
+    participant OBS as Observability
     participant EXEC as Executive
     
     SB->>UI: Submit time request
     UI->>API: POST /approvals/triage
     API->>LLM: Evaluate request
     LLM-->>API: Decision + confidence
-    API->>LF: Log trace
+    API->>OBS: Log trace
     
     alt High Confidence
         API-->>UI: Auto-approve
@@ -469,20 +571,20 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant EXEC as Executive
-    participant UI as ToolJet
+    participant UI as UI Platform
     participant DB as Neon DB
-    participant LF as Langfuse
+    participant OBS as Observability
     participant API as AI Manager API
     
     EXEC->>UI: Edit prompt
-    UI->>LF: Update prompt version
-    LF->>DB: Store new version
+    UI->>OBS: Update prompt version
+    OBS->>DB: Store new version
     
     EXEC->>UI: Update rule
     UI->>DB: Update configuration
     
     Note over API: Next evaluation uses new prompt/rule
-    API->>LF: Fetch latest prompt
+    API->>OBS: Fetch latest prompt
     API->>DB: Fetch latest rules
 ```
 
@@ -567,12 +669,12 @@ External APIs:
 ### **1. Read-Heavy Operations (Q&A, Dashboards)**
 
 ```
-User → ToolJet → Redis (check cache)
-                ↓ (cache miss)
-                → API → Neon DB + pgvector
-                      → LLM (if needed)
-                → Redis (store result)
-                → ToolJet → User
+User → UI Platform → Redis (check cache)
+                   ↓ (cache miss)
+                   → API → Neon DB + pgvector
+                         → LLM (if needed)
+                   → Redis (store result)
+                   → UI Platform → User
 ```
 
 ### **2. Write-Heavy Operations (Weekly Evaluations)**
@@ -580,7 +682,7 @@ User → ToolJet → Redis (check cache)
 ```
 n8n (trigger) → API → Batch process
                      → Neon DB (bulk insert)
-                     → Langfuse (async logging)
+                     → Observability (async logging)
                      → n8n (completion webhook)
                      → AWS SES (send emails)
 ```
@@ -588,10 +690,10 @@ n8n (trigger) → API → Batch process
 ### **3. Real-Time Operations (Chat)**
 
 ```
-User → ToolJet → API → pgvector (semantic search)
-                     → LLM (generate response)
-                     → Langfuse (log trace)
-                     → ToolJet → User
+User → UI Platform → API → pgvector (semantic search)
+                         → LLM (generate response)
+                         → Observability (log trace)
+                         → UI Platform → User
 
 Latency target: < 2 seconds
 ```
@@ -600,17 +702,17 @@ Latency target: < 2 seconds
 
 ## 🎯 Technology Choices Summary
 
-| Container | Technology | Why This Choice |
-|-----------|-----------|-----------------|
-| **ToolJet** | Node.js + React | Open source, self-hosted, executive-friendly UI |
-| **n8n** | Node.js | Visual workflows, extensive integrations, self-hosted |
-| **AI Manager API** | Python + FastAPI + LangGraph | LangGraph for AI orchestration, FastAPI for performance |
-| **Langfuse** | Next.js + PostgreSQL | Open source observability, self-hosted, embeddable |
-| **Neon** | PostgreSQL 16 + pgvector | Serverless, vector search, cost-effective |
-| **S3** | Object storage | Standard for documents, cheap, reliable |
-| **Redis** | Upstash (serverless) | Caching, no maintenance, pay-per-use |
-| **LLM** | OpenAI + Claude | Best quality, fallback redundancy |
-| **Embeddings** | Voyage-3-Large | SOTA performance, 32K context |
+| Container | Technology Options | Decision Status |
+|-----------|-------------------|-----------------|
+| **UI Platform** | Airtable (SaaS) OR ToolJet (self-hosted) | ⏳ Pending |
+| **Workflow Engine** | n8n (Node.js, self-hosted) | ✅ Confirmed |
+| **AI Manager API** | Python + FastAPI + LangGraph | ✅ Confirmed |
+| **Observability** | LangSmith (SaaS) OR Langfuse (self-hosted) OR Both | ⏳ Pending |
+| **Primary Database** | Neon PostgreSQL 16 + pgvector | ✅ Confirmed |
+| **Document Storage** | AWS S3 | ✅ Confirmed |
+| **Cache** | Upstash Redis (serverless) | ✅ Confirmed |
+| **LLM** | OpenAI + Claude (fallback) | ✅ Confirmed |
+| **Embeddings** | Voyage-3-Large | ✅ Confirmed |
 
 ---
 
@@ -624,12 +726,11 @@ Latency target: < 2 seconds
 4. Configure AWS SES
 ```
 
-### **Phase 2: Deploy Containers (Week 2)**
+### **Phase 2: Deploy Core Services (Week 2)**
 ```bash
-1. Deploy ToolJet (ECS)
-2. Deploy n8n (ECS)
-3. Deploy Langfuse (ECS)
-4. Configure networking (VPC, security groups)
+1. Deploy n8n (ECS)
+2. Deploy Observability platform (ECS or SaaS)
+3. Configure networking (VPC, security groups)
 ```
 
 ### **Phase 3: Deploy AI Layer (Week 3)**
@@ -640,12 +741,19 @@ Latency target: < 2 seconds
 4. Test end-to-end
 ```
 
-### **Phase 4: Integration (Week 4)**
+### **Phase 4: Deploy UI & Integration (Week 4+)**
 ```bash
-1. Connect ToolJet → API
-2. Configure n8n workflows
-3. Embed Langfuse in ToolJet
-4. Test with real data
+Option A (Airtable):
+  1. Use Itamar's POC as starting point
+  2. Connect to AI Manager API
+  3. Configure Airtable Automations
+  4. Test with real data
+  
+Option B (ToolJet):
+  1. Deploy ToolJet (ECS)
+  2. Build interfaces (2-3 weeks)
+  3. Embed observability
+  4. Test with real data
 ```
 
 ---
@@ -655,9 +763,9 @@ Latency target: < 2 seconds
 ### **Health Checks:**
 
 ```yaml
-ToolJet:
-  Endpoint: GET /api/health
-  Interval: 30 seconds
+UI Platform:
+  Airtable: N/A (SaaS managed)
+  ToolJet: GET /api/health (30s interval)
   
 n8n:
   Endpoint: GET /healthz
@@ -667,9 +775,9 @@ AI Manager API:
   Endpoint: GET /health
   Interval: 30 seconds
   
-Langfuse:
-  Endpoint: GET /api/health
-  Interval: 30 seconds
+Observability:
+  LangSmith: N/A (SaaS managed)
+  Langfuse: GET /api/health (30s interval)
 ```
 
 ### **Observability:**
@@ -684,13 +792,13 @@ Metrics:
   - Custom metrics via Langfuse
   
 Traces:
-  - All AI interactions → Langfuse
+  - All AI interactions → Observability platform
   - API calls → CloudWatch X-Ray (optional)
   
 Alerts:
   - Container health failures
   - API error rate > 5%
-  - Langfuse quality metrics < threshold
+  - AI quality metrics < threshold
 ```
 
 ---
@@ -699,11 +807,19 @@ Alerts:
 
 ```yaml
 Compute (ECS Fargate):
-  ToolJet: 0.25 vCPU, 0.5 GB RAM = $15/month
   n8n: 0.25 vCPU, 0.5 GB RAM = $15/month
-  Langfuse: 0.25 vCPU, 0.5 GB RAM = $15/month
   AI API (if ECS): 0.5 vCPU, 1 GB RAM × 2 = $60/month
-  Subtotal: $105/month
+  
+  UI Platform:
+    Option A (Airtable): $135/month (3 users)
+    Option B (ToolJet): $15/month (compute)
+  
+  Observability:
+    Option A (LangSmith): $199/month (team) or $39/month (1 dev)
+    Option B (Langfuse): $15/month (compute)
+    Option C (Both): $54/month ($39 + $15)
+  
+  Subtotal: $90-225/month (varies by choices)
 
 OR Lambda:
   AI API: ~$50-150/month (usage-based)
@@ -718,30 +834,48 @@ External Services:
   OpenAI API: $200-500/month
   Voyage API: $20-50/month
   AWS SES: $10-50/month
-  LangSmith (dev): $99/month
-  Subtotal: $329-699/month
+  Subtotal: $230-600/month
 
 Networking:
   ALB: $20/month
   Data transfer: $10-30/month
   Subtotal: $30-50/month
 
-Total: $504-1,104/month
+Total Range:
+  Low (Airtable + Langfuse): ~$495/month
+  Mid (ToolJet + Both observability): ~$430/month  
+  High (ToolJet + LangSmith team): ~$619/month
 ```
 
 ---
 
-## ✅ Next Steps
+## ✅ Status & Next Steps
 
-This Container Architecture provides:
-- ✅ Clear deployment boundaries
-- ✅ Technology choices justified
-- ✅ Scalability strategy
-- ✅ Cost estimates
-- ✅ Integration patterns
+### **What's Defined:**
+- ✅ Container breakdown (4 containers + 3 data stores)
+- ✅ Core technology stack (n8n, FastAPI+LangGraph, Neon, S3, Redis)
+- ✅ Deployment patterns (serverless-first)
+- ✅ Integration flows
+- ✅ Cost ranges
 
-**Ready for Level 3 (Component Architecture)?**
-- Zoom into each container
-- Show internal components
-- Define interfaces and responsibilities
+### **Pending Decisions:**
 
+1. **UI Platform:**
+   - Option A: Airtable (leverage Itamar's POC, $135/month)
+   - Option B: ToolJet (self-hosted, $15/month)
+   - See: `research-and-analysis/AIRTABLE_VS_TOOLJET.md`
+
+2. **Observability:**
+   - Option A: LangSmith only ($39-199/month)
+   - Option B: Langfuse only ($15/month)
+   - Option C: Both ($54/month)
+   - See: `research-and-analysis/OBSERVABILITY_STACK.md`
+
+### **After Decisions Made:**
+- Update this document with final choices
+- Create Level 2 summary
+- Move to Level 3: Component Architecture
+
+### **Detailed Specifications:**
+- UI mockups and flows: `research-and-analysis/INTERFACES.md`
+- Platform comparisons: See research-and-analysis folder
